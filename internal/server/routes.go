@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	_ "github.com/joho/godotenv"
 	"github.com/markbates/goth/gothic"
 )
 
@@ -27,47 +29,44 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Get("/", s.HelloWorldHandler)
 
-	r.Get("/health", s.healthHandler)
-
-	r.Get("/auth/{provider}/callback", s.handleOAuthCallback)
-	r.Get("/auth/{provider}", s.handleAuth)
+	r.Get("/auth/{provider}/callback", s.authCallbackHandler)
+	r.Get("/auth/{provider}", s.authHandler)
 
 	return r
 }
 
 func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
-
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
+	resp := map[string]string{
+		"message": "Hello World",
 	}
 
-	_, _ = w.Write(jsonResp)
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("Error encoding JSON response: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	jsonResp, _ := json.Marshal(s.db.Health())
-	_, _ = w.Write(jsonResp)
-}
-
-func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+func (s *Server) authCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	provider := chi.URLParam(r, "provider")
-	r = r.WithContext(context.WithValue(context.Background(), "provider", provider))
+	r = r.WithContext(context.WithValue(r.Context(), "provider", provider))
 
 	user, err := gothic.CompleteUserAuth(w, r)
 	if err != nil {
-		fmt.Fprintln(w, r)
+		log.Printf("Error handling auth callback: %v", err)
+		http.Error(w, "Unable to log in", http.StatusUnauthorized)
 		return
 	}
 
-	fmt.Println(user)
+	clientUrl := os.Getenv("CLIENT_URL")
 
-	http.Redirect(w, r, "http://localhost:3000", http.StatusFound)
+	fmt.Println(user) // TODO: save to database
+
+	http.Redirect(w, r, clientUrl, http.StatusFound)
 }
 
-func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) authHandler(w http.ResponseWriter, r *http.Request) {
 	provider := chi.URLParam(r, "provider")
 	r = r.WithContext(context.WithValue(r.Context(), "provider", provider))
 

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/http"
 	"os"
 	"strconv"
 
@@ -33,6 +34,7 @@ func NewAuth() {
 	store.Options.Path = "/"
 	store.Options.HttpOnly = true
 	store.Options.Secure = isProd
+	store.Options.SameSite = http.SameSiteLaxMode
 
 	gothic.Store = store
 
